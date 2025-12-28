@@ -87,13 +87,14 @@ public class LineChartView extends View {
             trainValues.remove(0);
             valValues.remove(0);
         }
-        postInvalidate();
+        // Use invalidate() since we're called from UI thread
+        invalidate();
     }
 
     public void clear() {
         trainValues.clear();
         valValues.clear();
-        postInvalidate();
+        invalidate();
     }
 
     @Override
@@ -106,11 +107,11 @@ public class LineChartView extends View {
         int chartWidth = width - 2 * padding;
         int chartHeight = height - 2 * padding - 40;
 
+        // Draw background FIRST (so other layers show on top)
+        canvas.drawColor(Color.WHITE);
+
         // Draw title
         canvas.drawText(title, padding, 35, textPaint);
-
-        // Draw background
-        canvas.drawColor(Color.WHITE);
 
         if (trainValues.isEmpty()) {
             canvas.drawText("No data", width / 2f - 50, height / 2f, textPaint);

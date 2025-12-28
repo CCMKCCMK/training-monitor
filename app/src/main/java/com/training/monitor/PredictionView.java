@@ -55,13 +55,13 @@ public class PredictionView extends View {
     public void setData(List<Float> actual, List<Float> predicted) {
         this.actualValues = actual;
         this.predictedValues = predicted;
-        postInvalidate();
+        invalidate();
     }
 
     public void clear() {
         actualValues.clear();
         predictedValues.clear();
-        postInvalidate();
+        invalidate();
     }
 
     @Override
