@@ -131,7 +131,12 @@ public class MainActivity extends Activity {
             @Override
             public void onPredictionData(float[] actual, float[] predicted) {
                 runOnUiThread(() -> {
-                    predictionView.setData(actual, predicted);
+                    // Convert float[] to List<Float>
+                    java.util.List<Float> actualList = new java.util.ArrayList<>();
+                    java.util.List<Float> predictedList = new java.util.ArrayList<>();
+                    for (float f : actual) actualList.add(f);
+                    for (float f : predicted) predictedList.add(f);
+                    predictionView.setData(actualList, predictedList);
                 });
             }
 
