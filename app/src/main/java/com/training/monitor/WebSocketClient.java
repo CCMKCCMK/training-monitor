@@ -10,16 +10,14 @@ import java.util.concurrent.TimeUnit;
 /**
  * WebSocket client for receiving training data.
  * Connects to Python WebSocket server.
- *
- * Refactored with automatic reconnection with exponential backoff.
  */
 public class WebSocketClient {
 
     private static final String TAG = "WebSocketClient";
     private static final String DEFAULT_HOST = "127.0.0.1";
     private static final int DEFAULT_PORT = 8765;
-    private static final int MAX_RECONNECT_DELAY_MS = 30000; // 30 seconds max
     private static final int INITIAL_RECONNECT_DELAY_MS = 1000; // 1 second
+    private static final int MAX_RECONNECT_DELAY_MS = 10000; // 10 seconds max
 
     private OkHttpClient client;
     private WebSocket webSocket;
@@ -49,8 +47,9 @@ public class WebSocketClient {
         this.client = new OkHttpClient.Builder()
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .writeTimeout(10, TimeUnit.SECONDS)
-            .pingInterval(30, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(true)
+            // Disable automatic ping - server may not handle pongs correctly
+            .pingInterval(0, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(false)  // We handle reconnect ourselves
             .build();
         this.serverUrl = "ws://" + DEFAULT_HOST + ":" + DEFAULT_PORT;
     }
@@ -74,12 +73,14 @@ public class WebSocketClient {
         shouldReconnect = true;
         reconnectAttempt = 0;
 
+        FileLogger.getInstance().i(TAG, "Connecting to " + serverUrl);
+
         webSocket = client.newWebSocket(request, new WebSocketListener() {
             @Override
             public void onOpen(WebSocket webSocket, Response response) {
                 isConnected = true;
                 reconnectAttempt = 0; // Reset on successful connection
-                Log.i(TAG, "Connected to " + serverUrl);
+                FileLogger.getInstance().i(TAG, "Connected to " + serverUrl);
                 if (listener != null) {
                     listener.onConnected();
                 }
@@ -87,6 +88,8 @@ public class WebSocketClient {
 
             @Override
             public void onMessage(WebSocket webSocket, String text) {
+                FileLogger.getInstance().d(TAG, "Message received: " + text.substring(0, Math.min(100, text.length())));
+
                 try {
                     JSONObject json = new JSONObject(text);
                     String type = json.optString("type", "training");
@@ -119,24 +122,24 @@ public class WebSocketClient {
                         }
                     }
                 } catch (Exception e) {
-                    Log.e(TAG, "Error parsing message: " + e.getMessage());
+                    FileLogger.getInstance().e(TAG, "Error parsing message: " + e.getMessage());
                 }
             }
 
             @Override
             public void onClosing(WebSocket webSocket, int code, String reason) {
-                Log.i(TAG, "Closing: " + reason);
+                FileLogger.getInstance().i(TAG, "Closing: " + code + " - " + reason);
             }
 
             @Override
             public void onClosed(WebSocket webSocket, int code, String reason) {
                 isConnected = false;
-                Log.i(TAG, "Connection closed: " + reason);
+                FileLogger.getInstance().w(TAG, "Connection CLOSED - Code: " + code + ", Reason: " + reason);
                 if (listener != null) {
                     listener.onDisconnected();
                 }
-                // Schedule reconnect if appropriate
-                scheduleReconnect();
+                // DO NOT auto-reconnect on clean close - this was causing the 15-second disconnect loop!
+                // Only reconnect on onFailure() for actual errors
             }
 
             @Override
@@ -144,13 +147,13 @@ public class WebSocketClient {
                 isConnected = false;
                 String errorMsg = t.getMessage();
                 if (errorMsg == null) errorMsg = "Unknown error";
-                Log.e(TAG, "Connection error: " + errorMsg);
+                FileLogger.getInstance().e(TAG, "Connection error: " + errorMsg);
 
                 if (listener != null) {
                     listener.onError(errorMsg);
                     listener.onDisconnected();
                 }
-                // Schedule reconnect
+                // Schedule reconnect on actual failure
                 scheduleReconnect();
             }
         });
@@ -158,11 +161,11 @@ public class WebSocketClient {
 
     /**
      * Schedule reconnection with exponential backoff.
-     * Delay doubles each time up to MAX_RECONNECT_DELAY_MS.
+     * Only called from onFailure() for actual errors, not from onClosed().
      */
     private void scheduleReconnect() {
         if (!shouldReconnect) {
-            Log.i(TAG, "Reconnect disabled, not scheduling");
+            FileLogger.getInstance().i(TAG, "Reconnect disabled, not scheduling");
             return;
         }
 
@@ -170,7 +173,7 @@ public class WebSocketClient {
         long delay = Math.min(INITIAL_RECONNECT_DELAY_MS * (1L << reconnectAttempt),
                              MAX_RECONNECT_DELAY_MS);
 
-        Log.i(TAG, String.format("Scheduling reconnect in %d ms (attempt %d)",
+        FileLogger.getInstance().i(TAG, String.format("Scheduling reconnect in %d ms (attempt %d)",
                                  delay, reconnectAttempt + 1));
 
         reconnectRunnable = new Runnable() {
@@ -178,7 +181,7 @@ public class WebSocketClient {
             public void run() {
                 if (shouldReconnect && !isConnected) {
                     reconnectAttempt++;
-                    Log.i(TAG, "Attempting reconnect #" + reconnectAttempt);
+                    FileLogger.getInstance().i(TAG, "Attempting reconnect #" + reconnectAttempt);
                     connect();
                 }
             }
@@ -198,7 +201,7 @@ public class WebSocketClient {
     }
 
     public void disconnect() {
-        Log.i(TAG, "Disconnect requested");
+        FileLogger.getInstance().i(TAG, "Disconnect requested");
         shouldReconnect = false;
         cancelReconnect();
         reconnectAttempt = 0;
@@ -207,7 +210,7 @@ public class WebSocketClient {
             try {
                 webSocket.close(1000, "User closing");
             } catch (Exception e) {
-                Log.e(TAG, "Error closing WebSocket: " + e.getMessage());
+                FileLogger.getInstance().e(TAG, "Error closing WebSocket: " + e.getMessage());
             }
             webSocket = null;
         }

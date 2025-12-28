@@ -21,6 +21,7 @@ import java.util.List;
  * - Single Handler for all UI updates (batched at 10 FPS)
  * - WebSocket callbacks only update data variables
  * - Periodic update loop applies data to views
+ * - File logging for debugging
  */
 public class MainActivity extends Activity {
 
@@ -34,6 +35,7 @@ public class MainActivity extends Activity {
     private PerformanceGauge performanceGauge;
     private WebSocketClient wsClient;
     private TextView statusText;
+    private TextView logPathText;
     private EditText hostInput;
     private EditText portInput;
     private Button connectButton;
@@ -62,6 +64,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Initialize FileLogger
+        FileLogger.init(this);
+        FileLogger.getInstance().i(TAG, "MainActivity onCreate");
 
         uiHandler = new Handler(Looper.getMainLooper());
 
@@ -123,6 +129,14 @@ public class MainActivity extends Activity {
         statusText.setPadding(0, 4, 0, 4);
         layout.addView(statusText);
 
+        // Log path text (small, gray)
+        logPathText = new TextView(this);
+        logPathText.setText("Log: " + FileLogger.getLogPath());
+        logPathText.setTextSize(10);
+        logPathText.setTextColor(0xFF888888);
+        logPathText.setPadding(0, 0, 0, 4);
+        layout.addView(logPathText);
+
         // Performance gauge (top) - shows current status
         performanceGauge = new PerformanceGauge(this);
         performanceGauge.setLayoutParams(new LinearLayout.LayoutParams(
@@ -149,11 +163,11 @@ public class MainActivity extends Activity {
         ));
         layout.addView(energyChart);
 
-        // Prediction view
+        // Prediction view - increased height for time series
         predictionView = new PredictionView(this);
         predictionView.setLayoutParams(new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            180
+            280  // Increased from 180
         ));
         layout.addView(predictionView);
 
@@ -198,6 +212,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onConnected() {
+                FileLogger.getInstance().i(TAG, "UI: Connected");
                 runOnUiThread(() -> {
                     statusText.setText("Connected to " + wsClient.getServerUrl());
                     connectButton.setEnabled(false);
@@ -220,6 +235,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onDisconnected() {
+                FileLogger.getInstance().w(TAG, "UI: Disconnected");
                 runOnUiThread(() -> {
                     connectButton.setEnabled(true);
                     disconnectButton.setEnabled(false);
@@ -231,6 +247,7 @@ public class MainActivity extends Activity {
 
             @Override
             public void onError(String error) {
+                FileLogger.getInstance().e(TAG, "UI Error: " + error);
                 runOnUiThread(() -> {
                     statusText.setText("Error: " + error);
                 });
@@ -282,10 +299,12 @@ public class MainActivity extends Activity {
 
         wsClient.setServerUrl(host, port);
         statusText.setText("Connecting to " + host + ":" + port + "...");
+        FileLogger.getInstance().i(TAG, "Connecting to " + host + ":" + port);
         wsClient.connect();
     }
 
     private void disconnectFromServer() {
+        FileLogger.getInstance().i(TAG, "Disconnect requested");
         wsClient.disconnect();
         statusText.setText("Disconnected");
     }
@@ -293,6 +312,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        FileLogger.getInstance().i(TAG, "MainActivity onDestroy");
         stopUpdateLoop();
         if (wsClient != null) {
             wsClient.disconnect();
