@@ -1,8 +1,10 @@
 package com.training.monitor;
 
 import android.content.Context;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
@@ -12,11 +14,27 @@ import java.util.List;
 
 /**
  * Watches the training data file and updates the UI.
+ * Uses app-specific external storage: /storage/emulated/0/Android/data/com.training.monitor/files/
+ * Accessible from Termux via: ~/storage/android/data/com.training.monitor/files/
  */
 public class DataFileWatcher {
 
-    private static final String TRAINING_FILE = "/data/data/com.termux/files/home/.training_live.json";
-    private static final String PREDICTION_FILE = "/data/data/com.termux/files/home/.training_prediction.json";
+    private static final String TAG = "DataFileWatcher";
+    private static String TRAINING_FILE;
+    private static String PREDICTION_FILE;
+
+    public static void initPaths(Context context) {
+        File appDir = context.getExternalFilesDir(null);
+        if (appDir != null) {
+            TRAINING_FILE = new File(appDir, "training_live.json").getAbsolutePath();
+            PREDICTION_FILE = new File(appDir, "training_prediction.json").getAbsolutePath();
+            Log.i(TAG, "Data path: " + appDir.getAbsolutePath());
+        } else {
+            TRAINING_FILE = "/data/data/com.training.monitor/files/training_live.json";
+            PREDICTION_FILE = "/data/data/com.training.monitor/files/training_prediction.json";
+            Log.w(TAG, "Using fallback path");
+        }
+    }
 
     private Handler handler;
     private Runnable watcherRunnable;
