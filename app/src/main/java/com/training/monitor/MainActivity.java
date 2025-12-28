@@ -32,6 +32,7 @@ public class MainActivity extends Activity {
     private LineChartView lossChart;
     private LineChartView energyChart;
     private PredictionView predictionView;
+    private VideoFrameView videoFrameView;
     private PerformanceGauge performanceGauge;
     private WebSocketClient wsClient;
     private TextView statusText;
@@ -52,6 +53,14 @@ public class MainActivity extends Activity {
     private List<Float> predictionActual = new ArrayList<>();
     private List<Float> predictionPredicted = new ArrayList<>();
 
+    // Frame data buffer for video understanding
+    private int currentFrame = 0;
+    private int totalFrames = 0;
+    private float frameConfidence = 0;
+    private String actionLabel = "";
+    private float actionConfidence = 0;
+    private List<float[]> frameBoxes = new ArrayList<>();
+
     // Update loop
     private Handler uiHandler;
     private Runnable updateRunnable;
@@ -60,6 +69,7 @@ public class MainActivity extends Activity {
     // Flags for new data
     private volatile boolean hasNewTrainingData = false;
     private volatile boolean hasNewPredictionData = false;
+    private volatile boolean hasNewFrameData = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -171,6 +181,14 @@ public class MainActivity extends Activity {
         ));
         layout.addView(predictionView);
 
+        // Video frame view - for video understanding tasks
+        videoFrameView = new VideoFrameView(this);
+        videoFrameView.setLayoutParams(new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            250
+        ));
+        layout.addView(videoFrameView);
+
         setContentView(layout);
 
         // Setup periodic update loop
@@ -211,6 +229,24 @@ public class MainActivity extends Activity {
             }
 
             @Override
+            public void onFrameData(int frame, int total, float conf, String action,
+                                   float actionConf, List<float[]> boxes) {
+                // Update frame data buffer
+                synchronized (frameBoxes) {
+                    currentFrame = frame;
+                    totalFrames = total;
+                    frameConfidence = conf;
+                    actionLabel = action;
+                    actionConfidence = actionConf;
+                    frameBoxes.clear();
+                    for (float[] box : boxes) {
+                        frameBoxes.add(box);
+                    }
+                    hasNewFrameData = true;
+                }
+            }
+
+            @Override
             public void onConnected() {
                 FileLogger.getInstance().i(TAG, "UI: Connected");
                 runOnUiThread(() -> {
@@ -224,9 +260,11 @@ public class MainActivity extends Activity {
                     lossChart.clear();
                     energyChart.clear();
                     predictionView.clear();
+                    videoFrameView.clear();
                     currentStep = 0;
                     hasNewTrainingData = false;
                     hasNewPredictionData = false;
+                    hasNewFrameData = false;
 
                     // Start update loop
                     startUpdateLoop();
@@ -287,6 +325,15 @@ public class MainActivity extends Activity {
                                       new ArrayList<>(predictionPredicted));
             }
             hasNewPredictionData = false;
+        }
+
+        if (hasNewFrameData) {
+            synchronized (frameBoxes) {
+                videoFrameView.setFrameDataSimple(currentFrame, totalFrames,
+                    frameConfidence, actionLabel, actionConfidence,
+                    new ArrayList<>(frameBoxes));
+            }
+            hasNewFrameData = false;
         }
     }
 

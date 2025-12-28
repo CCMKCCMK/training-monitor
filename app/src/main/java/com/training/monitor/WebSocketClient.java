@@ -35,6 +35,8 @@ public class WebSocketClient {
         void onTrainingData(int step, float trainLoss, float valLoss,
                            float trainEnergy, float valEnergy);
         void onPredictionData(float[] actual, float[] predicted);
+        void onFrameData(int frame, int total, float conf, String action,
+                        float actionConf, List<float[]> boxes);
         void onConnected();
         void onDisconnected();
         void onError(String error);
@@ -119,6 +121,29 @@ public class WebSocketClient {
 
                         if (listener != null) {
                             listener.onPredictionData(actual, predicted);
+                        }
+                    } else if (type.equals("frame")) {
+                        int frame = json.getInt("frame");
+                        int total = json.getInt("total");
+                        float conf = (float) json.getDouble("confidence");
+                        String action = json.optString("action", "");
+                        float actionConf = (float) json.optDouble("action_conf", 0);
+
+                        org.json.JSONArray boxesArr = json.optJSONArray("boxes");
+                        java.util.List<float[]> boxes = new java.util.ArrayList<>();
+                        if (boxesArr != null) {
+                            for (int i = 0; i < boxesArr.length(); i++) {
+                                org.json.JSONArray boxArr = boxesArr.getJSONArray(i);
+                                float[] box = new float[boxArr.length()];
+                                for (int j = 0; j < boxArr.length(); j++) {
+                                    box[j] = (float) boxArr.getDouble(j);
+                                }
+                                boxes.add(box);
+                            }
+                        }
+
+                        if (listener != null) {
+                            listener.onFrameData(frame, total, conf, action, actionConf, boxes);
                         }
                     }
                 } catch (Exception e) {
