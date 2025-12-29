@@ -59,7 +59,6 @@ public class VideoFrameView extends View {
     /**
      * Clear the current frame.
      */
-    @Override
     public void clear() {
         if (currentFrame != null && !currentFrame.isRecycled()) {
             currentFrame.recycle();
