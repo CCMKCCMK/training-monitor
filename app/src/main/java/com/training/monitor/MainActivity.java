@@ -1,6 +1,7 @@
 package com.training.monitor;
 
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -30,7 +31,6 @@ public class MainActivity extends Activity {
 
     // UI Components
     private LineChartView lossChart;
-    private LineChartView energyChart;
     private PredictionView predictionView;
     private VideoFrameView videoFrameView;
     private PerformanceGauge performanceGauge;
@@ -54,12 +54,7 @@ public class MainActivity extends Activity {
     private List<Float> predictionPredicted = new ArrayList<>();
 
     // Frame data buffer for video understanding
-    private int currentFrame = 0;
-    private int totalFrames = 0;
-    private float frameConfidence = 0;
-    private String actionLabel = "";
-    private float actionConfidence = 0;
-    private List<float[]> frameBoxes = new ArrayList<>();
+    private Bitmap currentFrameBitmap = null;
 
     // Update loop
     private Handler uiHandler;
@@ -164,15 +159,6 @@ public class MainActivity extends Activity {
         ));
         layout.addView(lossChart);
 
-        // Energy chart
-        energyChart = new LineChartView(this);
-        energyChart.setTitle("Energy");
-        energyChart.setLayoutParams(new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            250
-        ));
-        layout.addView(energyChart);
-
         // Prediction view - increased height for time series
         predictionView = new PredictionView(this);
         predictionView.setLayoutParams(new LinearLayout.LayoutParams(
@@ -231,17 +217,17 @@ public class MainActivity extends Activity {
             @Override
             public void onFrameData(int frame, int total, float conf, String action,
                                    float actionConf, List<float[]> boxes) {
-                // Update frame data buffer
-                synchronized (frameBoxes) {
-                    currentFrame = frame;
-                    totalFrames = total;
-                    frameConfidence = conf;
-                    actionLabel = action;
-                    actionConfidence = actionConf;
-                    frameBoxes.clear();
-                    for (float[] box : boxes) {
-                        frameBoxes.add(box);
+                // Legacy frame data - not used anymore, video frames sent as Bitmap
+            }
+
+            @Override
+            public void onFrameImage(Bitmap frameImage) {
+                // Update frame bitmap buffer
+                synchronized (this) {
+                    if (currentFrameBitmap != null && !currentFrameBitmap.isRecycled()) {
+                        currentFrameBitmap.recycle();
                     }
+                    currentFrameBitmap = frameImage;
                     hasNewFrameData = true;
                 }
             }
@@ -258,7 +244,6 @@ public class MainActivity extends Activity {
 
                     // Clear previous data
                     lossChart.clear();
-                    energyChart.clear();
                     predictionView.clear();
                     videoFrameView.clear();
                     currentStep = 0;
@@ -311,7 +296,6 @@ public class MainActivity extends Activity {
         // Apply all buffered data to views in a single batch
         if (hasNewTrainingData) {
             lossChart.addPoint(currentTrainLoss, currentValLoss);
-            energyChart.addPoint(currentTrainEnergy, currentValEnergy);
             performanceGauge.updateData(currentStep, currentTrainLoss, currentValLoss,
                                        currentTrainEnergy, currentValEnergy);
             statusText.setText(String.format("Step: %d | Loss: %.4f / %.4f",
@@ -328,10 +312,10 @@ public class MainActivity extends Activity {
         }
 
         if (hasNewFrameData) {
-            synchronized (frameBoxes) {
-                videoFrameView.setFrameDataSimple(currentFrame, totalFrames,
-                    frameConfidence, actionLabel, actionConfidence,
-                    new ArrayList<>(frameBoxes));
+            synchronized (this) {
+                if (currentFrameBitmap != null && !currentFrameBitmap.isRecycled()) {
+                    videoFrameView.setFrameImage(currentFrameBitmap);
+                }
             }
             hasNewFrameData = false;
         }

@@ -1,7 +1,10 @@
 package com.training.monitor;
 
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.Log;
 import okhttp3.*;
 import org.json.JSONObject;
@@ -38,6 +41,7 @@ public class WebSocketClient {
         void onPredictionData(float[] actual, float[] predicted);
         void onFrameData(int frame, int total, float conf, String action,
                         float actionConf, List<float[]> boxes);
+        void onFrameImage(Bitmap frameImage);
         void onConnected();
         void onDisconnected();
         void onError(String error);
@@ -145,6 +149,20 @@ public class WebSocketClient {
 
                         if (listener != null) {
                             listener.onFrameData(frame, total, conf, action, actionConf, boxes);
+                        }
+                    } else if (type.equals("video_frame")) {
+                        // Decode base64 image to Bitmap
+                        String base64Data = json.optString("image", "");
+                        if (!base64Data.isEmpty()) {
+                            try {
+                                byte[] decodedBytes = Base64.decode(base64Data, Base64.DEFAULT);
+                                Bitmap bitmap = BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.length);
+                                if (bitmap != null && listener != null) {
+                                    listener.onFrameImage(bitmap);
+                                }
+                            } catch (Exception e) {
+                                FileLogger.getInstance().e(TAG, "Error decoding frame image: " + e.getMessage());
+                            }
                         }
                     }
                 } catch (Exception e) {
